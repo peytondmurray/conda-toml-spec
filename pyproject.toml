@@ -1,0 +1,180 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "conda-toml-spec"
+description = "Toml environment specification for conda"
+readme = "README.md"
+authors = [
+  { name = "Peyton Murray", email = "peynmurray@gmail.com" },
+]
+license = { file = "LICENSE" }
+classifiers = [
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python :: 3",
+]
+requires-python = ">=3.10"
+dependencies = [
+  # "conda >=23.9.0",
+  "tomli>=2.0.1;python_version<'3.11'",
+  "tomli-w",
+]
+dynamic = ["version"]
+
+[project.urls]
+homepage = "https://github.com/peytondmurray/conda-toml-spec"
+
+[project.entry-points.conda]
+conda-toml-spec = "conda_toml_spec.plugin"
+
+[tool.pixi.project]
+channels = ["conda-forge", "conda-canary/label/dev"]
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+
+[tool.pixi.dependencies]
+python = ">=3.10"
+tomli-w = "*"
+conda = { version = ">=25.5.1.24", channel = "conda-canary/label/dev" }
+
+[tool.pixi.pypi-dependencies]
+conda-toml-spec = { path  = ".", editable = true }
+
+[tool.pixi.tasks]
+conda = "python -m conda"
+
+[tool.pixi.feature.build]
+dependencies = { conda-build = "*" }
+tasks = { build = "conda build recipe --override-channels -c conda-canary/label/dev -c conda-forge" }
+
+[tool.pixi.feature.docs.tasks]
+docs = { cmd = "python -m sphinx.cmd.build -M dirhtml . _build", cwd = "docs" }
+serve = { cmd = "python -m http.server", cwd = "docs/_build/dirhtml" }
+clean = { cmd = "rm -rf _build", cwd = "docs" }
+
+[tool.pixi.feature.docs.dependencies]
+python = "3.10.*"
+conda-sphinx-theme = "*"
+linkify-it-py = "*"
+myst-parser = "*"
+sphinx = "*"
+sphinx-copybutton = "*"
+sphinx-design = "*"
+sphinx-reredirects = "*"
+sphinx-sitemap = "*"
+sphinxcontrib-programoutput = "*"
+
+[tool.pixi.feature.test.tasks]
+test = 'python -mpytest -vvv'
+pre-commit = 'pre-commit'
+
+[tool.pixi.feature.test.dependencies]
+pytest = "7.4.3.*"
+fmt = "!=10.2.0"
+pytest-mock = "3.12.0.*"
+conda-build = "*"
+pre-commit = "*"
+frozendict = ">=2.4.6,<3"
+
+[tool.pixi.feature.py310.dependencies]
+python = "3.10.*"
+tomli = ">=2.0.1"
+
+[tool.pixi.feature.py311.dependencies]
+python = "3.11.*"
+
+[tool.pixi.feature.py312.dependencies]
+python = "3.12.*"
+
+[tool.pixi.feature.py313.dependencies]
+python = "3.13.*"
+
+[tool.pixi.environments]
+dev = ["py310"]
+build = ["build"]
+docs = ["docs"]
+test-py310 = ["test", "py310"]
+test-py311 = ["test", "py311"]
+test-py312 = ["test", "py312"]
+test-py313 = ["test", "py313"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "conda_toml_spec/_version.py"
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
+
+[tool.coverage.run]
+source = ["conda_toml_spec/", "tests/"]
+omit = ["conda_toml_spec/__init__.py"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    "W",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # pep8 naming
+    "N",
+    # pydocstyle
+    "D",
+    # annotations
+    "ANN",
+    # debugger
+    "T10",
+    # flake8-pytest
+    "PT",
+    # flake8-return
+    "RET",
+    # flake8-unused-arguments
+    "ARG",
+    # flake8-fixme
+    "FIX",
+    # flake8-eradicate
+    "ERA",
+    # pandas-vet
+    "PD",
+    # numpy-specific rules
+    "NPY",
+]
+ignore = [
+    "ANN002", # Missing type annotation for `*args`
+    "ANN003", # Missing type annotation for `**kwargs`
+    "ANN201", # Missing return type annotation for public function (makes no sense for NoneType return types...)
+    "ANN204", # Missing return type annotation for special method
+    "B905", # zip() without an explicit strict=; incompatible with python<3.12
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D105", # Missing docstring in magic method
+    "D107", # Missing docstring in __init__
+    "D203", # 1 blank line before after class docstring
+    "D204", # 1 blank line required after class docstring
+    "D206", # Docstrings should be indented with spaces; unnecessary when running ruff-format
+    "D211", # No blank line before class
+    "D213", # Multiline summary second line
+    "D413", # 1 black line after parameters
+    "E501", # Line length too long; unnecessary when running ruff-format
+    "PD901", # Avoid using 'df' for pandas dataframes. Perfectly fine in functions with limited scope
+    "SIM108", # Simplify if/else to one line; not always clearer
+    "W191", # Indentation contains tabs; unnecessary when running ruff-format
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"test_*.py" = ["ANN001"]
+"conftest.py" = ["ANN001"]
