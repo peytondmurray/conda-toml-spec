@@ -67,12 +67,10 @@ sphinxcontrib-programoutput = "*"
 
 [tool.pixi.feature.test.tasks]
 test = 'pytest'
-pre-commit = 'pre-commit'
 
 [tool.pixi.feature.test.dependencies]
-pytest = "7.4.3.*"
+pytest = "*"
 conda-build = "*"
-pre-commit = "*"
 
 [tool.pixi.feature.py310.dependencies]
 python = "3.10.*"
