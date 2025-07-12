@@ -37,8 +37,6 @@ class TomlSpec(EnvironmentSpecBase):
 class Urls(BaseModel):
     """A model which holds one or more URLs associated with a package."""
 
-    homepage: AnyHttpUrl | None
-
     class Config:  # noqa: D106
         extra = "allow"
 

@@ -10,10 +10,6 @@ license = ""  # SPDX expression
 license-files = [] # PEP 639 style
 
 [about.urls]
-homepage = ""
-# ^^^ this is going to be used in sharing metadata, so let's make sure we have it
-
-###
 
 [config]  # maps to Environment.config, also `conda config`
 channels = ["conda-forge"]
@@ -36,8 +32,3 @@ pywin32 = "*"
 
 [pypi-dependencies]
 example = "*"
-
-
-# IMPLICITLY:
-# [environments]
-# default = ["default"]
