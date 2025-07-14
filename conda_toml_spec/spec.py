@@ -134,7 +134,7 @@ class Platform(BaseModel):
         return validate_dependencies(deps)
 
 
-class TomlEnvironment(BaseModel):
+class TomlSingleEnvironment(BaseModel):
     """A model which serializes/deserializes a TOML environment file."""
 
     version: int = 1
@@ -166,3 +166,7 @@ class TomlEnvironment(BaseModel):
             A list of MatchSpec objects representing the dependencies
         """
         return validate_dependencies(deps)
+
+
+class TomlMultiEnvironment(BaseModel):
+    pass
