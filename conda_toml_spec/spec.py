@@ -1,10 +1,25 @@
+from __future__ import annotations
+
+from abc import ABC
+from copy import copy
 from pathlib import Path
+from pprint import pformat
+from textwrap import indent
 from typing import Any
+from warnings import warn
 
 from conda.models.environment import Environment
 from conda.models.match_spec import MatchSpec
 from conda.plugins.types import EnvironmentSpecBase
-from pydantic import AnyHttpUrl, BaseModel, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 
 class TomlSpec(EnvironmentSpecBase):
@@ -36,9 +51,7 @@ class TomlSpec(EnvironmentSpecBase):
 
 class Urls(BaseModel):
     """A model which holds one or more URLs associated with a package."""
-
-    class Config:  # noqa: D106
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
     @model_validator(mode="before")
     @classmethod
@@ -56,7 +69,7 @@ class Urls(BaseModel):
             Validated URLs for each field
         """
         for name, value in data.items():
-            if name not in cls.__fields__:
+            if name not in cls.model_fields:
                 data[name] = AnyHttpUrl(value)
         return data
 
@@ -77,7 +90,7 @@ class About(BaseModel):
     urls: Urls
 
 
-class Config(BaseModel):
+class TomlConfig(BaseModel):
     """A model which stores configuration options for an environment."""
 
     channels: list[str] = []
@@ -110,11 +123,9 @@ def validate_dependencies(deps: dict[str, Any]) -> list[MatchSpec]:
 
 class Platform(BaseModel):
     """A model which stores a list of dependencies for a platform."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     dependencies: list[MatchSpec]
-
-    class Config:  # noqa: D106
-        arbitrary_types_allowed = True
 
     @field_validator("dependencies", mode="before")
     @classmethod
@@ -134,23 +145,21 @@ class Platform(BaseModel):
         return validate_dependencies(deps)
 
 
-class TomlSingleEnvironment(BaseModel):
-    """A model which serializes/deserializes a TOML environment file."""
+class TomlEnvironment(BaseModel):
+    """A base class for (de)serialization of a TOML environment file.
 
-    version: int = 1
+    This shouldn't be instantiated directly; instead use one of the child classes, or
+    TomlEnvironment.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     about: About
-    config: Config
+    config: TomlConfig
     system_requirements: list[MatchSpec] = []
-    dependencies: list[MatchSpec] = []
-    platform: dict[str, Platform] = {}
-    pypi_dependencies: list[MatchSpec] = []
+    version: int = 1
 
-    class Config:  # noqa: D106
-        arbitrary_types_allowed = True
 
-    @field_validator(
-        "system_requirements", "dependencies", "pypi_dependencies", mode="before"
-    )
+    @field_validator("system_requirements", mode="before")
     @classmethod
     def _validate_dependencies(cls, deps: dict[str, Any]) -> list[MatchSpec]:
         """Convert a dict of package dependencies to a list of MatchSpec.
@@ -167,6 +176,117 @@ class TomlSingleEnvironment(BaseModel):
         """
         return validate_dependencies(deps)
 
+    @classmethod
+    def model_validate(cls, *args, **kwargs):
+        if cls not in [TomlSingleEnvironment, TomlMultiEnvironment]:
+            try:
+                return TomlSingleEnvironment.model_validate(*args, **kwargs)
+            except ValidationError:
+                return TomlMultiEnvironment.model_validate(*args, **kwargs)
 
-class TomlMultiEnvironment(BaseModel):
-    pass
+            raise ValidationError
+
+        # If one of the subclasses is trying to validate, pass validation onto
+        # the parent.
+        return super().model_validate(*args, **kwargs)
+
+class TomlSingleEnvironment(TomlEnvironment):
+    """A model which handles single environment files."""
+    dependencies: list[MatchSpec] = []
+    platform: dict[str, Platform] = {}
+    pypi_dependencies: list[MatchSpec] = []
+
+    @field_validator("dependencies", "pypi_dependencies", mode="before")
+    @classmethod
+    def _validate_dependencies(cls, deps: dict[str, Any]) -> list[MatchSpec]:
+        return super()._validate_dependencies(deps)
+
+
+class Group(BaseModel):
+    """A model which stores configuration for a group of dependencies."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    config: TomlConfig
+    dependencies: list[MatchSpec] = []
+    description: str | None = None
+    platform: dict[str, Platform] = {}
+    pypi_dependencies: list[MatchSpec] = []
+    system_requirements: list[MatchSpec] = []
+
+
+class TomlMultiEnvironment(TomlEnvironment):
+    """A model which handles multi environment files."""
+    groups: dict[str, Group] = {}
+    environments: dict[str, list[str]] = {}
+
+    @field_validator("groups", mode="after")
+    @classmethod
+    def _validate_groups(cls, groups: dict[str, Group]) -> dict[str, Group]:
+        """Verify that at least one group is specified."""
+        if not groups:
+            raise ValueError("At least one group is required in a multi-environment specification.")
+        return groups
+
+    @field_validator("environments", mode="after")
+    @classmethod
+    def _validate_environments(
+        cls,
+        envs: dict[str, list[str]],
+        info: ValidationInfo,
+    ) -> dict[str, list[str]]:
+        """Verify that >1 env is specified, and that envs refer to specified groups.
+
+        Warn the user if the spec contains a group which is not used by any environment.
+
+        Parameters
+        ----------
+        envs : dict[str, list[str]]
+            Unvalidated environments
+        info : ValidationInfo
+            Validated information; contains the validated groups
+
+        Returns
+        -------
+        dict[str, list[str]]
+            The validated environments
+        """
+        if not envs:
+            raise ValueError(
+                "Multi-environment specifications must contain at least one "
+                "environment."
+            )
+
+        groups = set(info.data.get('groups', {}))
+        extra_groups: set[str] = copy(groups)
+
+        missing_groups = {}
+        for env, env_groups in envs.items():
+            # If an environment contains an unspecified group, keep track of it
+            missing = set(env_groups) - groups
+            if missing:
+                missing_groups[env] = missing
+
+            # Keep track of which groups are being used by environments, so we can warn
+            # about unused ones later on
+            extra_groups -= set(env_groups)
+
+        if missing_groups:
+            # Let the user know what groups are missing for each problematic environment
+            msg = ""
+            for key, values in missing_groups.items():
+                msg += key
+                msg += indent(pformat(values), prefix="  ")
+            raise ValueError(
+                "Multi-environment specification has environments with undefined "
+                f"dependency groups:\n{indent(pformat(msg), prefix='  ')}"
+            )
+
+        if extra_groups:
+            warn(
+                "Some dependency groups were specified which were never used in any"
+                "environment. Consider removing these:\n"
+                f"{indent(pformat(extra_groups), prefix='  ')}",
+                stacklevel=2
+            )
+
+        return envs
