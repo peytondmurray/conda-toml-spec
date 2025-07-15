@@ -86,17 +86,20 @@ pywin32 = "*"
 
 [groups.typing]
 description = "These are type hinting dependencies"
+
 [groups.typing.dependencies]
 lxml = "*"
 mypy = "*"
 
 [groups.benchmark]
 description = "These are dependencies required for benchmarking"
+
 [groups.benchmark.dependencies]
 pytest-codspeed = { version = ">=3.0.0", channel = "conda-forge" }
 
 [groups.memray]
 description = "These are dependencies required for memory usage analysis"
+
 [groups.memray.dependencies]
 pytest-memray = { version = "*", channel = "conda-forge" }
 

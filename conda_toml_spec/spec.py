@@ -44,7 +44,12 @@ def as_dict(value: dict[str, str | dict[str, str]]) -> list[dict[str, str]]:
         if isinstance(item, str):
             items.append(MatchSpec(name=name, version=item))
         elif isinstance(item, dict):
-            items.append(MatchSpec(name=name, **item))
+            # This is a dict representation of a MatchSpec
+            # or an editable file
+            try:
+                items.append(EditablePackage(name=name, **item))
+            except ValidationError:
+                items.append(MatchSpec(name=name, **item))
         else:
             raise ValueError
 
@@ -78,32 +83,6 @@ class TomlSpec(EnvironmentSpecBase):
         return Environment()
 
 
-class Urls(BaseModel):
-    """A model which holds one or more URLs associated with a package."""
-
-    model_config = ConfigDict(extra="allow")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _validate_urls(cls, data: dict[str, Any]) -> dict[str, AnyHttpUrl]:
-        """Check that custom URL key/value pairs are actually URLs.
-
-        Parameters
-        ----------
-        data : Any
-            A dict of {field names: field values}
-
-        Returns
-        -------
-        dict[str, AnyHttpUrl]
-            Validated URLs for each field
-        """
-        for name, value in data.items():
-            if name not in cls.model_fields:
-                data[name] = AnyHttpUrl(value)
-        return data
-
-
 class Author(BaseModel):
     """A model which holds author information."""
 
@@ -118,13 +97,19 @@ class About(BaseModel):
     `license_files` is a PEP639-compliant expression: https://peps.python.org/pep-0639/#term-license-expression
     """
 
+    model_config = ConfigDict(
+        alias_generator=lambda name: name.replace("_", "-"),
+        validate_by_name=True,
+        validate_by_alias=True,
+    )
+
     name: str
     revision: str
     description: str
     authors: list[Author] = []
     license: str = ""
     license_files: list[str] = []
-    urls: Urls
+    urls: dict[str, AnyHttpUrl] = {}
 
 
 class Config(BaseModel):
@@ -135,7 +120,15 @@ class Config(BaseModel):
     variables: dict[str, str] = {}
 
 
-MatchSpecList = Annotated[list[MatchSpec], BeforeValidator(as_dict)]
+class EditablePackage(BaseModel):
+    """A model which store info about an editable package."""
+
+    name: str
+    path: str
+    editable: bool
+
+
+MatchSpecList = Annotated[list[MatchSpec | EditablePackage], BeforeValidator(as_dict)]
 
 
 class Platform(BaseModel):
@@ -153,7 +146,12 @@ class TomlEnvironment(BaseModel):
     TomlEnvironment.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        alias_generator=lambda name: name.replace("_", "-"),
+        validate_by_name=True,
+        validate_by_alias=True,
+    )
 
     about: About
     config: Config
@@ -178,6 +176,12 @@ class TomlEnvironment(BaseModel):
 
 class TomlSingleEnvironment(TomlEnvironment):
     """A model which handles single environment files."""
+
+    model_config = ConfigDict(
+        alias_generator=lambda name: name.replace("_", "-"),
+        validate_by_name=True,
+        validate_by_alias=True,
+    )
 
     dependencies: MatchSpecList = []
     platform: dict[str, Platform] = {}
@@ -208,7 +212,12 @@ class TomlSingleEnvironment(TomlEnvironment):
 class Group(BaseModel):
     """A model which stores configuration for a group of dependencies."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        alias_generator=lambda name: name.replace("_", "-"),
+        validate_by_name=True,
+        validate_by_alias=True,
+    )
 
     config: Config | None = Config()
     dependencies: MatchSpecList = []
